@@ -1,0 +1,305 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   AIWFA Global Styles
+   ============================================ */
+
+/* Root variables */
+:root {
+  --color-void: #030712;
+  --color-abyss: #0a0f1a;
+  --color-neon: #10b981;
+  --color-cyan: #06b6d4;
+}
+
+/* Base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-void text-cloud font-body;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-abyss;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neon rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neonLight;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+/* Glass card effect */
+@layer components {
+  .glass-card {
+    @apply bg-deep/60 backdrop-blur-xl border border-ghost/10 rounded-2xl;
+  }
+  
+  .glass-card-hover {
+    @apply transition-all duration-300;
+  }
+  
+  .glass-card-hover:hover {
+    @apply border-neon/30;
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.1);
+  }
+}
+
+/* Buttons */
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-neon to-neonDark text-white 
+           px-6 py-3 rounded-lg font-semibold
+           transition-all duration-300 border-0 cursor-pointer
+           flex items-center gap-2 justify-center;
+  }
+  
+  .btn-primary:hover {
+    @apply transform -translate-y-0.5;
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+  }
+  
+  .btn-secondary {
+    @apply bg-transparent text-neon border border-neon
+           px-6 py-3 rounded-lg font-semibold
+           transition-all duration-300 cursor-pointer
+           flex items-center gap-2 justify-center;
+  }
+  
+  .btn-secondary:hover {
+    @apply bg-neon/10;
+  }
+}
+
+/* Text gradient */
+@layer components {
+  .text-gradient {
+    @apply bg-gradient-to-r from-neon via-cyan to-neon bg-clip-text text-transparent;
+    background-size: 200% 200%;
+    animation: gradient 8s ease infinite;
+  }
+}
+
+/* Glow effects */
+@layer components {
+  .glow-neon {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), 0 0 40px rgba(16, 185, 129, 0.2);
+  }
+  
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.4), 0 0 40px rgba(6, 182, 212, 0.2);
+  }
+  
+  .glow-rose {
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.4), 0 0 40px rgba(244, 63, 94, 0.2);
+  }
+  
+  .glow-amber {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4), 0 0 40px rgba(245, 158, 11, 0.2);
+  }
+}
+
+/* Status indicators */
+@layer components {
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  .status-healthy {
+    @apply bg-neon;
+  }
+  
+  .status-warning {
+    @apply bg-amber;
+  }
+  
+  .status-error {
+    @apply bg-rose;
+  }
+}
+
+/* Grid pattern background */
+@layer components {
+  .grid-pattern {
+    background-image: 
+      linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+}
+
+/* Noise texture overlay */
+@layer components {
+  .noise-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  }
+}
+
+/* Gradient mesh background */
+@layer components {
+  .gradient-mesh {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(16, 185, 129, 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 20%, rgba(6, 182, 212, 0.1), transparent),
+      radial-gradient(ellipse 50% 30% at 60% 80%, rgba(244, 63, 94, 0.08), transparent),
+      #030712;
+  }
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Loading skeleton */
+@layer components {
+  .skeleton {
+    background: linear-gradient(90deg, 
+      rgba(148, 163, 184, 0.1) 0%, 
+      rgba(148, 163, 184, 0.2) 50%, 
+      rgba(148, 163, 184, 0.1) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton 1.5s ease-in-out infinite;
+  }
+}
+
+/* ============================================
+   Map Styles
+   ============================================ */
+
+@layer components {
+  .map-container {
+    @apply relative overflow-hidden rounded-2xl;
+  }
+  
+  .map-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: 
+      linear-gradient(180deg, rgba(3, 7, 18, 0.3) 0%, transparent 20%),
+      linear-gradient(0deg, rgba(3, 7, 18, 0.5) 0%, transparent 30%);
+  }
+  
+  .risk-marker {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  
+  .risk-marker:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+    z-index: 100;
+  }
+}
+
+/* ============================================
+   Data Visualization
+   ============================================ */
+
+/* Temperature color scale */
+@layer components {
+  .temp-scale {
+    background: linear-gradient(90deg, 
+      #3b82f6 0%,    /* Cold - Blue */
+      #06b6d4 25%,   /* Cool - Cyan */
+      #10b981 45%,   /* Mild - Green */
+      #f59e0b 65%,   /* Warm - Amber */
+      #f43f5e 85%,   /* Hot - Rose */
+      #dc2626 100%   /* Extreme - Red */
+    );
+  }
+  
+  .precip-scale {
+    background: linear-gradient(90deg,
+      rgba(6, 182, 212, 0.1) 0%,
+      rgba(6, 182, 212, 0.3) 25%,
+      rgba(6, 182, 212, 0.5) 50%,
+      rgba(59, 130, 246, 0.7) 75%,
+      rgba(99, 102, 241, 0.9) 100%
+    );
+  }
+}
+
+/* Recharts custom styles */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #334155;
+}
+
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+/* ============================================
+   Responsive Utilities
+   ============================================ */
+
+@media (max-width: 768px) {
+  .glass-card {
+    @apply rounded-xl;
+  }
+  
+  .btn-primary,
+  .btn-secondary {
+    @apply px-4 py-2 text-sm;
+  }
+}
