@@ -22,28 +22,7 @@ export interface GeoJSONPolygon {
   coordinates: number[][][];
 }
 
-// ============ User & Auth ============
-
-export interface User {
-  id: string;
-  email: string;
-  name?: string;
-  role: 'user' | 'admin' | 'agronomist';
-  created_at: string;
-}
-
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-}
-
 // ============ Forecast Data ============
-
-export interface ForecastPoint {
-  time: string;
-  value: number;
-}
 
 export interface ForecastResponse {
   model: string;
@@ -91,23 +70,18 @@ export interface RiskAlert {
   id: string;
   event_type: RiskEventType;
   severity: RiskSeverity;
-  location_name?: string;
-  location_lat?: number;
-  location_lon?: number;
+  region: string;
+  country: string;
+  lat: number;
+  lon: number;
   forecast_date: string;
-  date_start?: string;
-  date_end?: string;
-  duration_hours?: number;
-  confidence?: number;
-  probability?: number;
-  peak_value?: number;
+  lead_time_days: number;
+  confidence: number;
   action_recommended?: string;
   status: AlertStatus;
-  model_source?: string;
   created_at: string;
 }
 
-// Global Risk Hotspots (for landing page map)
 export interface RiskHotspot {
   id: string;
   lat: number;
@@ -132,20 +106,23 @@ export interface VerificationScore {
   date: string;
   model: string;
   region?: string;
-  t2m_rmse?: number;
-  t2m_bias?: number;
-  t2m_mae?: number;
-  t2m_correlation?: number;
-  tp_rmse?: number;
-  tp_bias?: number;
-  tp_csi?: number;
-  tp_pod?: number;
-  tp_far?: number;
-  heat_event_csi?: number;
-  heat_event_pod?: number;
-  heat_event_far?: number;
-  cold_event_csi?: number;
-  wet_event_csi?: number;
+  temperature: {
+    rmse: number;
+    bias: number;
+    mae: number;
+    correlation: number;
+  };
+  precipitation: {
+    rmse: number;
+    csi: number;
+    pod: number;
+    far: number;
+  };
+  events: {
+    heat: { csi: number; pod: number; far: number };
+    cold: { csi: number; pod: number; far: number };
+    wet: { csi: number; pod: number; far: number };
+  };
   lead_time_hours: number;
 }
 
@@ -176,12 +153,9 @@ export interface GDDTargets {
 }
 
 export interface CropThresholds {
-  heat_stress: number;
-  cold_stress: number;
-  frost_damage?: number;
-  wet_stress_3day?: number;
-  wet_stress_7day?: number;
-  dry_stress?: number;
+  heat_max: number;
+  cold_min: number;
+  wet_max: number;
 }
 
 export interface CropProfile {
@@ -202,7 +176,7 @@ export interface CropProfile {
   created_at: string;
 }
 
-// ============ User Polygons (Areas of Concern) ============
+// ============ User Polygons ============
 
 export interface UserPolygon {
   id: string;
@@ -236,74 +210,21 @@ export interface PipelineStatus {
   era5_latest_date: string;
   status: 'healthy' | 'degraded' | 'error';
   steps: PipelineStep[];
-  data_freshness: {
-    ifs_age_hours: number;
-    aifs_age_hours: number;
-    era5_age_days: number;
-  };
+  data_freshness: string;
 }
 
 // ============ API Health ============
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'error';
-  database: boolean;
-  gcs: boolean;
-  ecmwf_connection: boolean;
+  database: string;
+  gcs: string;
+  ecmwf: string;
   timestamp: string;
   version?: string;
-  uptime_seconds?: number;
 }
 
-// ============ Chart Data ============
-
-export interface ChartDataPoint {
-  time: string;
-  displayTime: string;
-  hybrid?: number;
-  ifs?: number;
-  aifs?: number;
-  upper?: number;
-  lower?: number;
-  observed?: number;
-  anomaly?: number;
-}
-
-export interface TimeSeriesData {
-  times: string[];
-  values: number[];
-  uncertainty?: number[];
-  unit: string;
-}
-
-// ============ Map & Visualization ============
-
-export interface MapLayer {
-  id: string;
-  name: string;
-  type: 'risk' | 'temperature' | 'precipitation' | 'anomaly';
-  visible: boolean;
-  opacity: number;
-}
-
-export interface MapViewport {
-  center: Location;
-  zoom: number;
-  bounds?: BoundingBox;
-}
-
-// ============ Global Weather Data ============
-
-export interface GlobalWeatherField {
-  variable: WeatherVariable;
-  init_time: string;
-  valid_time: string;
-  data: number[][];
-  lat_range: [number, number];
-  lon_range: [number, number];
-  resolution: number;
-  unit: string;
-}
+// ============ Regional Summary ============
 
 export interface RegionalSummary {
   region: string;

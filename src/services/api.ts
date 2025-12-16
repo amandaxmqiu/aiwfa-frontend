@@ -24,7 +24,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const ENABLE_MOCK = import.meta.env.VITE_ENABLE_MOCK_DATA !== 'false';
 
 // ERA5 has ~5-6 day delay (confirmed Dec 2024)
-// On Dec 15, latest available is Dec 9
 const ERA5_DELAY_DAYS = 6;
 
 // ============ Helper Functions ============
@@ -72,7 +71,6 @@ export function getERA5LatestDate(): Date {
 }
 
 export function getERA5Availability(): ERA5Availability {
-  const today = new Date();
   const latestDate = getERA5LatestDate();
   
   const startDate = new Date(latestDate);
@@ -132,7 +130,7 @@ export function getDaysUntil(dateStr: string): number {
 function generateMockRiskHotspots(): RiskHotspot[] {
   const now = new Date();
   
-  const hotspots: RiskHotspot[] = [
+  return [
     // === TEMPERATURE RISKS ===
     {
       id: 'heat-de-bavaria',
@@ -301,8 +299,6 @@ function generateMockRiskHotspots(): RiskHotspot[] {
       crop_impact: 'Soybean stress risk increasing. Consider irrigation.',
     },
   ];
-  
-  return hotspots;
 }
 
 function generateMockVerificationScores(days: number = 10): VerificationScore[] {
@@ -315,7 +311,6 @@ function generateMockVerificationScores(days: number = 10): VerificationScore[] 
     date.setDate(latestDate.getDate() - i);
     const dateStr = formatDateISO(date);
     
-    // Realistic RMSE variation (better for short lead times)
     const leadTimeFactor = 1 + (i * 0.05);
     const baseRMSE = (1.1 + Math.random() * 0.3) * leadTimeFactor;
     const baseBias = (Math.random() - 0.5) * 0.4;
@@ -324,19 +319,35 @@ function generateMockVerificationScores(days: number = 10): VerificationScore[] 
       date: dateStr,
       model: 'hybrid',
       region: 'Europe',
-      t2m_rmse: Number(baseRMSE.toFixed(2)),
-      t2m_bias: Number(baseBias.toFixed(2)),
-      t2m_mae: Number((baseRMSE * 0.78).toFixed(2)),
-      t2m_correlation: Number((0.92 - i * 0.01 + Math.random() * 0.02).toFixed(3)),
-      tp_rmse: Number((2.5 + Math.random() * 1.0).toFixed(2)),
-      tp_csi: Number((0.52 + Math.random() * 0.15).toFixed(2)),
-      tp_pod: Number((0.68 + Math.random() * 0.15).toFixed(2)),
-      tp_far: Number((0.28 + Math.random() * 0.12).toFixed(2)),
-      heat_event_csi: Number((0.55 + Math.random() * 0.12).toFixed(2)),
-      heat_event_pod: Number((0.72 + Math.random() * 0.10).toFixed(2)),
-      heat_event_far: Number((0.22 + Math.random() * 0.08).toFixed(2)),
-      cold_event_csi: Number((0.50 + Math.random() * 0.12).toFixed(2)),
-      wet_event_csi: Number((0.45 + Math.random() * 0.12).toFixed(2)),
+      temperature: {
+        rmse: Number(baseRMSE.toFixed(2)),
+        bias: Number(baseBias.toFixed(2)),
+        mae: Number((baseRMSE * 0.78).toFixed(2)),
+        correlation: Number((0.92 - i * 0.01 + Math.random() * 0.02).toFixed(3)),
+      },
+      precipitation: {
+        rmse: Number((2.5 + Math.random() * 1.0).toFixed(2)),
+        csi: Number((0.52 + Math.random() * 0.15).toFixed(2)),
+        pod: Number((0.68 + Math.random() * 0.15).toFixed(2)),
+        far: Number((0.28 + Math.random() * 0.12).toFixed(2)),
+      },
+      events: {
+        heat: {
+          csi: Number((0.55 + Math.random() * 0.12).toFixed(2)),
+          pod: Number((0.72 + Math.random() * 0.10).toFixed(2)),
+          far: Number((0.22 + Math.random() * 0.08).toFixed(2)),
+        },
+        cold: {
+          csi: Number((0.50 + Math.random() * 0.12).toFixed(2)),
+          pod: Number((0.65 + Math.random() * 0.10).toFixed(2)),
+          far: Number((0.25 + Math.random() * 0.10).toFixed(2)),
+        },
+        wet: {
+          csi: Number((0.45 + Math.random() * 0.12).toFixed(2)),
+          pod: Number((0.60 + Math.random() * 0.12).toFixed(2)),
+          far: Number((0.30 + Math.random() * 0.10).toFixed(2)),
+        },
+      },
       lead_time_hours: 24 * (i + 1),
     });
   }
@@ -364,9 +375,9 @@ function generateMockProfiles(): CropProfile[] {
         maturity: 1400,
       },
       thresholds: {
-        heat_stress: 35,
-        cold_stress: 10,
-        wet_stress_3day: 50,
+        heat_max: 35,
+        cold_min: 10,
+        wet_max: 50,
       },
       current_gdd: 680,
       current_stage: 'V12 (Pre-tasseling)',
@@ -391,10 +402,9 @@ function generateMockProfiles(): CropProfile[] {
         maturity: 1800,
       },
       thresholds: {
-        heat_stress: 32,
-        cold_stress: -5,
-        frost_damage: -12,
-        wet_stress_7day: 70,
+        heat_max: 32,
+        cold_min: -5,
+        wet_max: 70,
       },
       current_gdd: 450,
       current_stage: 'Tillering',
@@ -414,336 +424,303 @@ function generateMockRegionalSummaries(): RegionalSummary[] {
   ];
 }
 
-// ============ API Functions ============
+// ============ API Functions (exported directly) ============
 
-export const api = {
-  // Health
-  async getHealth(): Promise<HealthStatus> {
-    if (ENABLE_MOCK) {
-      return {
-        status: 'healthy',
-        database: true,
-        gcs: true,
-        ecmwf_connection: true,
-        timestamp: new Date().toISOString(),
-        version: '5.1.0',
-        uptime_seconds: 86400 * 7,
-      };
+export async function getHealth(): Promise<HealthStatus> {
+  if (ENABLE_MOCK) {
+    return {
+      status: 'healthy',
+      database: 'connected',
+      gcs: 'connected',
+      ecmwf: 'connected',
+      timestamp: new Date().toISOString(),
+      version: '5.1.0',
+    };
+  }
+  return fetchAPI<HealthStatus>('/api/health');
+}
+
+export async function getPipelineStatus(): Promise<PipelineStatus> {
+  if (ENABLE_MOCK) {
+    const era5 = getERA5Availability();
+    const now = new Date();
+    
+    let nextFetch: Date;
+    const hour = now.getUTCHours();
+    if (hour < 8) {
+      nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
+    } else if (hour < 20) {
+      nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0));
+    } else {
+      nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 8, 0, 0));
     }
-    return fetchAPI<HealthStatus>('/api/health');
-  },
+    
+    const lastFetch = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+    
+    return {
+      last_ifs_fetch: lastFetch.toISOString(),
+      last_aifs_fetch: lastFetch.toISOString(),
+      next_scheduled_fetch: nextFetch.toISOString(),
+      ecmwf_delay_hours: 8,
+      era5_delay_days: ERA5_DELAY_DAYS,
+      era5_latest_date: era5.latest_date,
+      status: 'healthy',
+      steps: [
+        { name: 'Fetch IFS HRES', status: 'completed', duration_seconds: 180 },
+        { name: 'Fetch AIFS Ensemble', status: 'completed', duration_seconds: 240 },
+        { name: 'Store in GCS', status: 'completed', duration_seconds: 120 },
+        { name: 'Process to Zarr', status: 'completed', duration_seconds: 300 },
+        { name: 'Generate risk alerts', status: 'completed', duration_seconds: 90 },
+        { name: 'Update verification', status: 'completed', duration_seconds: 150 },
+      ],
+      data_freshness: 'fresh',
+    };
+  }
+  return fetchAPI<PipelineStatus>('/api/pipeline/status');
+}
 
-  // Pipeline Status
-  async getPipelineStatus(): Promise<PipelineStatus> {
-    if (ENABLE_MOCK) {
-      const era5 = getERA5Availability();
-      const now = new Date();
+export async function getAvailableForecasts(): Promise<AvailableForecasts> {
+  if (ENABLE_MOCK) {
+    const today = new Date();
+    const forecasts: AvailableForecasts = { ifs: [], aifs: [] };
+    
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = formatDateISO(d).replace(/-/g, '');
       
-      // Pipeline runs at 08:00 UTC and 20:00 UTC
-      let nextFetch: Date;
-      const hour = now.getUTCHours();
-      if (hour < 8) {
-        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
-      } else if (hour < 20) {
-        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0));
-      } else {
-        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 8, 0, 0));
-      }
+      forecasts.ifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 240 });
+      forecasts.aifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 360 });
+    }
+    
+    return forecasts;
+  }
+  return fetchAPI<AvailableForecasts>('/api/forecasts/available');
+}
+
+export async function getHybridForecast(
+  initDate: string,
+  initTime: string,
+  lat: number,
+  lon: number,
+  variable: string = 't2m'
+): Promise<HybridForecastResponse> {
+  if (ENABLE_MOCK) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const baseTemp = 20 - Math.abs(lat - 45) * 0.4;
+    const times: string[] = [];
+    const hybrid: number[] = [];
+    const ifs: number[] = [];
+    const aifs: number[] = [];
+    const uncertainty: number[] = [];
+    
+    const hours = variable === 't2m' ? 240 : 360;
+    
+    for (let h = 0; h <= hours; h += 6) {
+      const t = new Date(now.getTime() + h * 60 * 60 * 1000);
+      times.push(t.toISOString());
       
-      const lastFetch = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+      const dailyCycle = 8 * Math.sin((h % 24) * Math.PI / 12 - Math.PI / 2);
+      const trend = 3 * Math.sin(h * Math.PI / (7 * 24));
+      const noise = (Math.random() - 0.5) * 2;
       
-      return {
-        last_ifs_fetch: lastFetch.toISOString(),
-        last_aifs_fetch: lastFetch.toISOString(),
-        next_scheduled_fetch: nextFetch.toISOString(),
-        ecmwf_delay_hours: 8,
-        era5_delay_days: ERA5_DELAY_DAYS,
-        era5_latest_date: era5.latest_date,
-        status: 'healthy',
-        steps: [
-          { name: 'Fetch IFS HRES from ECMWF Open Data', status: 'completed', duration_seconds: 180 },
-          { name: 'Fetch AIFS Ensemble from ECMWF Open Data', status: 'completed', duration_seconds: 240 },
-          { name: 'Store GRIB files in GCS', status: 'completed', duration_seconds: 120 },
-          { name: 'Process and convert to Zarr', status: 'completed', duration_seconds: 300 },
-          { name: 'Calculate hybrid blend weights', status: 'completed', duration_seconds: 45 },
-          { name: 'Generate risk alerts', status: 'completed', duration_seconds: 90 },
-          { name: 'Update verification metrics (ERA5)', status: 'completed', duration_seconds: 150 },
-        ],
-        data_freshness: {
-          ifs_age_hours: 4,
-          aifs_age_hours: 4,
-          era5_age_days: ERA5_DELAY_DAYS,
-        },
-      };
-    }
-    return fetchAPI<PipelineStatus>('/api/pipeline/status');
-  },
-
-  // Forecasts
-  async getAvailableForecasts(): Promise<AvailableForecasts> {
-    if (ENABLE_MOCK) {
-      const today = new Date();
-      const forecasts: AvailableForecasts = { ifs: [], aifs: [] };
+      const ifsVal = baseTemp + dailyCycle + trend + noise;
+      const aifsVal = ifsVal + (Math.random() - 0.5) * 1.5;
+      const hybridVal = ifsVal * 0.6 + aifsVal * 0.4;
+      const unc = Math.abs(ifsVal - aifsVal) / 2 + 0.5 + (h / 24) * 0.1;
       
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() - i);
-        const dateStr = formatDateISO(d).replace(/-/g, '');
-        
-        forecasts.ifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 240 });
-        forecasts.aifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 360 });
-      }
-      
-      return forecasts;
+      ifs.push(Number(ifsVal.toFixed(1)));
+      aifs.push(Number(aifsVal.toFixed(1)));
+      hybrid.push(Number(hybridVal.toFixed(1)));
+      uncertainty.push(Number(unc.toFixed(1)));
     }
-    return fetchAPI<AvailableForecasts>('/api/forecasts/available');
-  },
+    
+    return {
+      init_date: initDate,
+      init_time: initTime,
+      location: { lat, lon },
+      variable,
+      times,
+      hybrid_values: hybrid,
+      ifs_values: ifs,
+      aifs_values: aifs,
+      uncertainty,
+      unit: variable === 't2m' ? '°C' : 'mm',
+    };
+  }
+  return fetchAPI<HybridForecastResponse>(
+    `/api/forecast/hybrid/${initDate}/${initTime}/location?lat=${lat}&lon=${lon}&variable=${variable}`
+  );
+}
 
-  async getHybridForecast(
-    initDate: string,
-    initTime: string,
-    lat: number,
-    lon: number,
-    variable: string = 't2m'
-  ): Promise<HybridForecastResponse> {
-    if (ENABLE_MOCK) {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      
-      const baseTemp = 20 - Math.abs(lat - 45) * 0.4;
-      const times: string[] = [];
-      const hybrid: number[] = [];
-      const ifs: number[] = [];
-      const aifs: number[] = [];
-      const uncertainty: number[] = [];
-      
-      const hours = variable === 't2m' ? 240 : 360;
-      
-      for (let h = 0; h <= hours; h += 6) {
-        const t = new Date(now.getTime() + h * 60 * 60 * 1000);
-        times.push(t.toISOString());
-        
-        const dailyCycle = 8 * Math.sin((h % 24) * Math.PI / 12 - Math.PI / 2);
-        const trend = 3 * Math.sin(h * Math.PI / (7 * 24));
-        const noise = (Math.random() - 0.5) * 2;
-        
-        const ifsVal = baseTemp + dailyCycle + trend + noise;
-        const aifsVal = ifsVal + (Math.random() - 0.5) * 1.5;
-        const hybridVal = ifsVal * 0.6 + aifsVal * 0.4;
-        const unc = Math.abs(ifsVal - aifsVal) / 2 + 0.5 + (h / 24) * 0.1;
-        
-        ifs.push(Number(ifsVal.toFixed(1)));
-        aifs.push(Number(aifsVal.toFixed(1)));
-        hybrid.push(Number(hybridVal.toFixed(1)));
-        uncertainty.push(Number(unc.toFixed(1)));
-      }
-      
-      return {
-        init_date: initDate,
-        init_time: initTime,
-        location: { lat, lon },
-        variable,
-        times,
-        hybrid_values: hybrid,
-        ifs_values: ifs,
-        aifs_values: aifs,
-        uncertainty,
-        unit: variable === 't2m' ? '°C' : 'mm',
-      };
-    }
-    return fetchAPI<HybridForecastResponse>(
-      `/api/forecast/hybrid/${initDate}/${initTime}/location?lat=${lat}&lon=${lon}&variable=${variable}`
-    );
-  },
+export async function getGlobalRiskHotspots(): Promise<RiskHotspot[]> {
+  if (ENABLE_MOCK) {
+    return generateMockRiskHotspots();
+  }
+  return fetchAPI<RiskHotspot[]>('/api/risks/global');
+}
 
-  // Global Risk Hotspots (for landing page)
-  async getGlobalRiskHotspots(): Promise<RiskHotspot[]> {
-    if (ENABLE_MOCK) {
-      return generateMockRiskHotspots();
-    }
-    return fetchAPI<RiskHotspot[]>('/api/risks/global');
-  },
+export async function getRegionalSummaries(): Promise<RegionalSummary[]> {
+  if (ENABLE_MOCK) {
+    return generateMockRegionalSummaries();
+  }
+  return fetchAPI<RegionalSummary[]>('/api/risks/regional');
+}
 
-  // Regional Summaries
-  async getRegionalSummaries(): Promise<RegionalSummary[]> {
-    if (ENABLE_MOCK) {
-      return generateMockRegionalSummaries();
-    }
-    return fetchAPI<RegionalSummary[]>('/api/risks/regional');
-  },
+export async function getAlerts(status: string = 'active'): Promise<RiskAlert[]> {
+  if (ENABLE_MOCK) {
+    const hotspots = generateMockRiskHotspots().slice(0, 4);
+    return hotspots.map(h => ({
+      id: h.id,
+      event_type: h.event_type,
+      severity: h.severity,
+      region: h.region,
+      country: h.country,
+      lat: h.lat,
+      lon: h.lon,
+      forecast_date: h.valid_time.split('T')[0],
+      lead_time_days: h.lead_time_days,
+      confidence: h.probability / 100,
+      action_recommended: h.crop_impact || h.description,
+      status: 'active' as const,
+      created_at: new Date().toISOString(),
+    }));
+  }
+  return fetchAPI<RiskAlert[]>(`/api/alerts?status=${status}`);
+}
 
-  // User Alerts
-  async getAlerts(status: string = 'active'): Promise<RiskAlert[]> {
-    if (ENABLE_MOCK) {
-      const hotspots = generateMockRiskHotspots().slice(0, 4);
-      return hotspots.map(h => ({
-        id: h.id,
-        event_type: h.event_type,
-        severity: h.severity,
-        location_name: `${h.region}, ${h.country}`,
-        location_lat: h.lat,
-        location_lon: h.lon,
-        forecast_date: h.valid_time.split('T')[0],
-        confidence: h.probability,
-        action_recommended: h.crop_impact || h.description,
-        status: 'active' as const,
-        created_at: new Date().toISOString(),
-      }));
-    }
-    return fetchAPI<RiskAlert[]>(`/api/alerts?status=${status}`);
-  },
+export async function dismissAlert(alertId: string): Promise<void> {
+  if (ENABLE_MOCK) return;
+  return fetchAPI(`/api/alerts/${alertId}/dismiss`, { method: 'POST' });
+}
 
-  async dismissAlert(alertId: string): Promise<void> {
-    if (ENABLE_MOCK) return;
-    return fetchAPI(`/api/alerts/${alertId}/dismiss`, { method: 'POST' });
-  },
+export async function getVerificationScores(days: number = 10): Promise<VerificationScore[]> {
+  if (ENABLE_MOCK) {
+    return generateMockVerificationScores(days);
+  }
+  return fetchAPI<VerificationScore[]>(`/api/verification/scores?days=${days}`);
+}
 
-  // Verification (with ERA5 delay handling - last 10 available days)
-  async getVerificationScores(days: number = 10): Promise<VerificationScore[]> {
-    if (ENABLE_MOCK) {
-      return generateMockVerificationScores(days);
-    }
-    return fetchAPI<VerificationScore[]>(`/api/verification/scores?days=${days}`);
-  },
+export async function getProfiles(): Promise<CropProfile[]> {
+  if (ENABLE_MOCK) {
+    return generateMockProfiles();
+  }
+  return fetchAPI<CropProfile[]>('/api/profiles');
+}
 
-  // Crop Profiles
-  async getProfiles(): Promise<CropProfile[]> {
-    if (ENABLE_MOCK) {
-      return generateMockProfiles();
-    }
-    return fetchAPI<CropProfile[]>('/api/profiles');
-  },
+export async function createProfile(profile: Partial<CropProfile>): Promise<CropProfile> {
+  if (ENABLE_MOCK) {
+    return { 
+      ...profile, 
+      id: `profile-${Date.now()}`, 
+      user_id: 'user-1', 
+      current_gdd: 0,
+      is_active: true,
+      created_at: new Date().toISOString() 
+    } as CropProfile;
+  }
+  return fetchAPI<CropProfile>('/api/profiles', {
+    method: 'POST',
+    body: JSON.stringify(profile),
+  });
+}
 
-  async createProfile(profile: Partial<CropProfile>): Promise<CropProfile> {
-    if (ENABLE_MOCK) {
-      return { 
-        ...profile, 
-        id: `profile-${Date.now()}`, 
-        user_id: 'user-1', 
-        current_gdd: 0,
-        is_active: true,
-        created_at: new Date().toISOString() 
-      } as CropProfile;
-    }
-    return fetchAPI<CropProfile>('/api/profiles', {
-      method: 'POST',
-      body: JSON.stringify(profile),
-    });
-  },
+export async function updateProfile(profileId: string, updates: Partial<CropProfile>): Promise<CropProfile> {
+  if (ENABLE_MOCK) {
+    const profiles = generateMockProfiles();
+    const profile = profiles.find(p => p.id === profileId);
+    return { ...profile, ...updates } as CropProfile;
+  }
+  return fetchAPI<CropProfile>(`/api/profiles/${profileId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
 
-  async updateProfile(profileId: string, updates: Partial<CropProfile>): Promise<CropProfile> {
-    if (ENABLE_MOCK) {
-      const profiles = generateMockProfiles();
-      const profile = profiles.find(p => p.id === profileId);
-      return { ...profile, ...updates } as CropProfile;
-    }
-    return fetchAPI<CropProfile>(`/api/profiles/${profileId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
-  },
+export async function deleteProfile(profileId: string): Promise<void> {
+  if (ENABLE_MOCK) return;
+  return fetchAPI(`/api/profiles/${profileId}`, { method: 'DELETE' });
+}
 
-  async deleteProfile(profileId: string): Promise<void> {
-    if (ENABLE_MOCK) return;
-    return fetchAPI(`/api/profiles/${profileId}`, { method: 'DELETE' });
-  },
-
-  // Polygons
-  async getPolygons(): Promise<UserPolygon[]> {
-    if (ENABLE_MOCK) {
-      return [
-        {
-          id: 'poly-1',
-          user_id: 'user-1',
-          name: 'North Field - Bavaria',
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[11.5, 48.1], [11.6, 48.1], [11.6, 48.2], [11.5, 48.2], [11.5, 48.1]]],
-          },
-          centroid: { lat: 48.15, lon: 11.55 },
-          area_hectares: 125.5,
-          crop_type: 'maize',
-          tags: ['irrigated', 'primary'],
-          created_at: '2024-04-01T00:00:00Z',
-        },
-        {
-          id: 'poly-2',
-          user_id: 'user-1',
-          name: 'South Field - Bavaria',
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[11.5, 48.0], [11.65, 48.0], [11.65, 48.08], [11.5, 48.08], [11.5, 48.0]]],
-          },
-          centroid: { lat: 48.04, lon: 11.575 },
-          area_hectares: 180.2,
-          crop_type: 'winter_wheat',
-          tags: ['rainfed'],
-          created_at: '2024-04-01T00:00:00Z',
-        },
-      ];
-    }
-    return fetchAPI<UserPolygon[]>('/api/polygons');
-  },
-
-  async createPolygon(polygon: Partial<UserPolygon>): Promise<UserPolygon> {
-    if (ENABLE_MOCK) {
-      return {
-        ...polygon,
-        id: `poly-${Date.now()}`,
+export async function getPolygons(): Promise<UserPolygon[]> {
+  if (ENABLE_MOCK) {
+    return [
+      {
+        id: 'poly-1',
         user_id: 'user-1',
-        created_at: new Date().toISOString(),
-      } as UserPolygon;
-    }
-    return fetchAPI<UserPolygon>('/api/polygons', {
-      method: 'POST',
-      body: JSON.stringify(polygon),
-    });
-  },
+        name: 'North Field - Bavaria',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[11.5, 48.1], [11.6, 48.1], [11.6, 48.2], [11.5, 48.2], [11.5, 48.1]]],
+        },
+        centroid: { lat: 48.15, lon: 11.55 },
+        area_hectares: 125.5,
+        crop_type: 'maize',
+        tags: ['irrigated', 'primary'],
+        created_at: '2024-04-01T00:00:00Z',
+      },
+    ];
+  }
+  return fetchAPI<UserPolygon[]>('/api/polygons');
+}
 
-  // Auth
-  async login(email: string, password: string): Promise<{ access_token: string }> {
-    if (ENABLE_MOCK) {
-      localStorage.setItem('aiwfa_token', 'mock-token-12345');
-      localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: email.split('@')[0] }));
-      return { access_token: 'mock-token-12345' };
-    }
-    
-    const formData = new URLSearchParams();
-    formData.append('username', email);
-    formData.append('password', password);
-    
-    const response = await fetch(`${API_URL}/api/auth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData,
-    });
-    
-    if (!response.ok) throw new Error('Login failed');
-    const data = await response.json();
-    localStorage.setItem('aiwfa_token', data.access_token);
-    return data;
-  },
+export async function createPolygon(polygon: Partial<UserPolygon>): Promise<UserPolygon> {
+  if (ENABLE_MOCK) {
+    return {
+      ...polygon,
+      id: `poly-${Date.now()}`,
+      user_id: 'user-1',
+      created_at: new Date().toISOString(),
+    } as UserPolygon;
+  }
+  return fetchAPI<UserPolygon>('/api/polygons', {
+    method: 'POST',
+    body: JSON.stringify(polygon),
+  });
+}
 
-  logout(): void {
-    localStorage.removeItem('aiwfa_token');
-    localStorage.removeItem('aiwfa_user');
-  },
+export async function login(email: string, password: string): Promise<{ access_token: string }> {
+  if (ENABLE_MOCK) {
+    localStorage.setItem('aiwfa_token', 'mock-token-12345');
+    localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: email.split('@')[0] }));
+    return { access_token: 'mock-token-12345' };
+  }
+  
+  const formData = new URLSearchParams();
+  formData.append('username', email);
+  formData.append('password', password);
+  
+  const response = await fetch(`${API_URL}/api/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData,
+  });
+  
+  if (!response.ok) throw new Error('Login failed');
+  const data = await response.json();
+  localStorage.setItem('aiwfa_token', data.access_token);
+  return data;
+}
 
-  isAuthenticated(): boolean {
-    return !!localStorage.getItem('aiwfa_token');
-  },
+export function logout(): void {
+  localStorage.removeItem('aiwfa_token');
+  localStorage.removeItem('aiwfa_user');
+}
 
-  async register(email: string, password: string, name?: string): Promise<{ access_token: string }> {
-    if (ENABLE_MOCK) {
-      localStorage.setItem('aiwfa_token', 'mock-token-12345');
-      localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: name || email.split('@')[0] }));
-      return { access_token: 'mock-token-12345' };
-    }
-    return fetchAPI('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
-    });
-  },
-};
+export function isAuthenticated(): boolean {
+  return !!localStorage.getItem('aiwfa_token');
+}
 
-export default api;
+export async function register(email: string, password: string, name?: string): Promise<{ access_token: string }> {
+  if (ENABLE_MOCK) {
+    localStorage.setItem('aiwfa_token', 'mock-token-12345');
+    localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: name || email.split('@')[0] }));
+    return { access_token: 'mock-token-12345' };
+  }
+  return fetchAPI('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, name }),
+  });
+}
