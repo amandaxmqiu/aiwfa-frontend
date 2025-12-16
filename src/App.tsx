@@ -446,7 +446,8 @@ interface CropProfileCardProps {
 }
 
 const CropProfileCard = ({ profile, onEdit, onDelete }: CropProfileCardProps) => {
-  const progress = (profile.current_gdd / profile.gdd_targets.maturity) * 100;
+  const maturityTarget = profile.gdd_targets.maturity ?? 2500;
+  const progress = (profile.current_gdd / maturityTarget) * 100;
   
   return (
     <div className="glass-card p-4 hover:bg-gray-800/50 transition-all">

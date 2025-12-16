@@ -86,7 +86,7 @@ export function getERA5Availability(): ERA5Availability {
 }
 
 export function formatDateISO(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split('T')[0] ?? '';
 }
 
 export function formatDate(dateStr: string): string {
@@ -580,7 +580,7 @@ export async function getAlerts(status: string = 'active'): Promise<RiskAlert[]>
       country: h.country,
       lat: h.lat,
       lon: h.lon,
-      forecast_date: h.valid_time.split('T')[0],
+      forecast_date: h.valid_time.split('T')[0] ?? h.valid_time,
       lead_time_days: h.lead_time_days,
       confidence: h.probability / 100,
       action_recommended: h.crop_impact || h.description,
