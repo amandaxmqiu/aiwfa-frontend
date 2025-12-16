@@ -1,12 +1,12 @@
 // ============================================
-// AIWFA API Service
+// AIWFA API Service v5.1
 // Handles all backend communication
+// ERA5 delay: ~5-6 days
 // ============================================
 
 import type {
   HealthStatus,
   AvailableForecasts,
-  ForecastResponse,
   HybridForecastResponse,
   RiskAlert,
   RiskHotspot,
@@ -15,15 +15,17 @@ import type {
   CropProfile,
   UserPolygon,
   ERA5Availability,
+  RegionalSummary,
 } from '../types';
 
 // ============ Configuration ============
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const ENABLE_MOCK = import.meta.env.VITE_ENABLE_MOCK_DATA === 'true';
+const ENABLE_MOCK = import.meta.env.VITE_ENABLE_MOCK_DATA !== 'false';
 
-// ERA5 has ~5 day delay (as of Dec 2024)
-const ERA5_DELAY_DAYS = 5;
+// ERA5 has ~5-6 day delay (confirmed Dec 2024)
+// On Dec 15, latest available is Dec 9
+const ERA5_DELAY_DAYS = 6;
 
 // ============ Helper Functions ============
 
@@ -54,34 +56,39 @@ async function fetchAPI<T>(
 
     return response.json();
   } catch (error) {
-    console.error(`API call failed: ${endpoint}`, error);
+    console.warn(`API call failed: ${endpoint}`, error);
     throw error;
   }
 }
 
 // ============ Date Utilities ============
 
-export function getERA5LatestDate(): string {
+export function getERA5LatestDate(): Date {
   const today = new Date();
   const latestDate = new Date(today);
   latestDate.setDate(today.getDate() - ERA5_DELAY_DAYS);
-  return latestDate.toISOString().split('T')[0];
+  latestDate.setHours(0, 0, 0, 0);
+  return latestDate;
 }
 
 export function getERA5Availability(): ERA5Availability {
   const today = new Date();
-  const latestDate = new Date(today);
-  latestDate.setDate(today.getDate() - ERA5_DELAY_DAYS);
+  const latestDate = getERA5LatestDate();
   
   const startDate = new Date(latestDate);
   startDate.setDate(latestDate.getDate() - 30);
   
   return {
-    latest_date: latestDate.toISOString().split('T')[0],
+    latest_date: formatDateISO(latestDate),
     delay_days: ERA5_DELAY_DAYS,
-    available_from: startDate.toISOString().split('T')[0],
-    available_to: latestDate.toISOString().split('T')[0],
+    available_from: formatDateISO(startDate),
+    available_to: formatDateISO(latestDate),
+    is_available: true,
   };
+}
+
+export function formatDateISO(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 export function formatDate(dateStr: string): string {
@@ -89,6 +96,16 @@ export function formatDate(dateStr: string): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+  });
+}
+
+export function formatDateFull(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
@@ -102,240 +119,229 @@ export function formatDateTime(dateStr: string): string {
   });
 }
 
+export function getDaysUntil(dateStr: string): number {
+  const target = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = target.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 // ============ Mock Data Generators ============
 
 function generateMockRiskHotspots(): RiskHotspot[] {
   const now = new Date();
   
-  return [
-    // Temperature risks
+  const hotspots: RiskHotspot[] = [
+    // === TEMPERATURE RISKS ===
     {
-      id: 'risk-1',
-      lat: 48.14,
-      lon: 11.58,
-      region: 'Bavaria',
-      country: 'Germany',
-      event_type: 'HEAT',
-      severity: 'HIGH',
-      variable: 't2m',
-      value: 38.5,
-      threshold: 35,
-      probability: 78,
+      id: 'heat-de-bavaria',
+      lat: 48.14, lon: 11.58,
+      region: 'Bavaria', country: 'Germany',
+      event_type: 'HEAT', severity: 'HIGH', variable: 't2m',
+      value: 38.5, threshold: 35, probability: 78,
       valid_time: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Extreme heat wave expected. Tmax > 35°C for 3+ days.',
+      lead_time_days: 3,
+      description: 'Extreme heat wave expected. Tmax > 35°C for 3+ consecutive days during critical grain fill stage.',
+      crop_impact: 'High risk for winter wheat yield loss. Consider irrigation scheduling.',
     },
     {
-      id: 'risk-2',
-      lat: 51.5,
-      lon: 10.5,
-      region: 'Thuringia',
-      country: 'Germany',
-      event_type: 'HEAT',
-      severity: 'MODERATE',
-      variable: 't2m',
-      value: 33.2,
-      threshold: 32,
-      probability: 65,
+      id: 'heat-us-kansas',
+      lat: 38.0, lon: -98.0,
+      region: 'Kansas', country: 'USA',
+      event_type: 'HEAT', severity: 'EXTREME', variable: 't2m',
+      value: 42.0, threshold: 35, probability: 88,
+      valid_time: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 5,
+      description: 'Dangerous heat dome forming. Tmax > 40°C expected for extended period.',
+      crop_impact: 'Critical for corn at tasseling stage. Immediate irrigation required.',
+    },
+    {
+      id: 'heat-fr-beauce',
+      lat: 48.1, lon: 1.5,
+      region: 'Beauce', country: 'France',
+      event_type: 'HEAT', severity: 'MODERATE', variable: 't2m',
+      value: 33.2, threshold: 32, probability: 65,
       valid_time: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Heat stress conditions during grain fill stage.',
+      lead_time_days: 4,
+      description: 'Heat stress conditions during grain fill stage. Tmax 32-35°C.',
+      crop_impact: 'Monitor wheat fields closely. May affect kernel weight.',
     },
     {
-      id: 'risk-3',
-      lat: 45.5,
-      lon: -73.5,
-      region: 'Quebec',
-      country: 'Canada',
-      event_type: 'FROST',
-      severity: 'HIGH',
-      variable: 't2m',
-      value: -3.5,
-      threshold: 0,
-      probability: 82,
+      id: 'frost-ca-quebec',
+      lat: 45.5, lon: -73.5,
+      region: 'Quebec', country: 'Canada',
+      event_type: 'FROST', severity: 'HIGH', variable: 't2m',
+      value: -4.5, threshold: 0, probability: 82,
       valid_time: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Late frost risk for emerging crops.',
+      lead_time_days: 2,
+      description: 'Late spring frost risk. Tmin < -4°C expected at ground level.',
+      crop_impact: 'High risk for emerging corn. Deploy frost protection if available.',
     },
     {
-      id: 'risk-4',
-      lat: 38.0,
-      lon: -100.0,
-      region: 'Kansas',
-      country: 'USA',
-      event_type: 'HEAT',
-      severity: 'EXTREME',
-      variable: 't2m',
-      value: 42.0,
-      threshold: 35,
-      probability: 88,
-      valid_time: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Dangerous heat dome. Irrigation critical.',
-    },
-    // Precipitation risks
-    {
-      id: 'risk-5',
-      lat: 52.0,
-      lon: 5.0,
-      region: 'Netherlands',
-      country: 'Netherlands',
-      event_type: 'WET',
-      severity: 'HIGH',
-      variable: 'tp',
-      value: 85,
-      threshold: 50,
-      probability: 72,
-      valid_time: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Heavy rainfall expected. 85mm in 3 days.',
-    },
-    {
-      id: 'risk-6',
-      lat: 47.5,
-      lon: 2.5,
-      region: 'Centre-Val de Loire',
-      country: 'France',
-      event_type: 'WET',
-      severity: 'MODERATE',
-      variable: 'tp',
-      value: 55,
-      threshold: 40,
-      probability: 58,
-      valid_time: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Persistent rain may delay harvest operations.',
-    },
-    {
-      id: 'risk-7',
-      lat: -23.5,
-      lon: -46.5,
-      region: 'São Paulo',
-      country: 'Brazil',
-      event_type: 'DRY',
-      severity: 'HIGH',
-      variable: 'tp',
-      value: 2,
-      threshold: 20,
-      probability: 75,
-      valid_time: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Extended dry spell. Drought stress imminent.',
-    },
-    {
-      id: 'risk-8',
-      lat: 35.0,
-      lon: 135.0,
-      region: 'Kansai',
-      country: 'Japan',
-      event_type: 'STORM',
-      severity: 'EXTREME',
-      variable: 'tp',
-      value: 150,
-      threshold: 100,
-      probability: 68,
+      id: 'cold-pl-mazovia',
+      lat: 52.2, lon: 21.0,
+      region: 'Mazovia', country: 'Poland',
+      event_type: 'COLD', severity: 'MODERATE', variable: 't2m',
+      value: 2.0, threshold: 5, probability: 71,
       valid_time: new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Typhoon approach. Extreme precipitation expected.',
+      lead_time_days: 6,
+      description: 'Cold spell with Tmin < 5°C for 4+ consecutive days.',
+      crop_impact: 'May slow maize emergence. Monitor soil temperature.',
     },
     {
-      id: 'risk-9',
-      lat: 30.0,
-      lon: 115.0,
-      region: 'Hubei',
-      country: 'China',
-      event_type: 'WET',
-      severity: 'MODERATE',
-      variable: 'tp',
-      value: 65,
-      threshold: 50,
-      probability: 62,
-      valid_time: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Monsoon rain affecting rice paddies.',
+      id: 'heat-au-nsw',
+      lat: -33.5, lon: 147.0,
+      region: 'New South Wales', country: 'Australia',
+      event_type: 'HEAT', severity: 'HIGH', variable: 't2m',
+      value: 41.0, threshold: 38, probability: 75,
+      valid_time: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 7,
+      description: 'Severe heat wave with Tmax > 40°C.',
+      crop_impact: 'Heat stress risk for wheat during flowering.',
     },
     {
-      id: 'risk-10',
-      lat: -33.9,
-      lon: 18.5,
-      region: 'Western Cape',
-      country: 'South Africa',
-      event_type: 'DRY',
-      severity: 'MODERATE',
-      variable: 'tp',
-      value: 5,
-      threshold: 25,
-      probability: 70,
+      id: 'heat-cn-henan',
+      lat: 34.5, lon: 113.5,
+      region: 'Henan', country: 'China',
+      event_type: 'HEAT', severity: 'MODERATE', variable: 't2m',
+      value: 36.0, threshold: 35, probability: 68,
+      valid_time: new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 8,
+      description: 'Heat wave affecting major wheat region.',
+      crop_impact: 'Monitor harvest timing to avoid heat damage.',
+    },
+    // === PRECIPITATION RISKS ===
+    {
+      id: 'wet-nl-netherlands',
+      lat: 52.0, lon: 5.0,
+      region: 'Central', country: 'Netherlands',
+      event_type: 'WET', severity: 'HIGH', variable: 'tp',
+      value: 85, threshold: 50, probability: 72,
+      valid_time: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 3,
+      description: 'Heavy persistent rainfall. 85mm expected over 3 days.',
+      crop_impact: 'Waterlogging risk. Delay field operations. Check drainage.',
+    },
+    {
+      id: 'wet-uk-east',
+      lat: 52.5, lon: 0.5,
+      region: 'East Anglia', country: 'UK',
+      event_type: 'WET', severity: 'MODERATE', variable: 'tp',
+      value: 55, threshold: 40, probability: 65,
+      valid_time: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 4,
+      description: 'Extended rainfall period. 55mm over 7 days.',
+      crop_impact: 'May delay harvest operations. Monitor soil saturation.',
+    },
+    {
+      id: 'dry-br-saopaulo',
+      lat: -23.5, lon: -46.5,
+      region: 'São Paulo', country: 'Brazil',
+      event_type: 'DRY', severity: 'HIGH', variable: 'tp',
+      value: 2, threshold: 20, probability: 79,
       valid_time: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-      description: 'Below-average rainfall expected.',
+      lead_time_days: 10,
+      description: 'Extended dry spell. <5mm rainfall over 14 days.',
+      crop_impact: 'Drought stress imminent for soybean. Irrigation critical.',
+    },
+    {
+      id: 'storm-jp-kanto',
+      lat: 35.7, lon: 140.0,
+      region: 'Kanto', country: 'Japan',
+      event_type: 'STORM', severity: 'EXTREME', variable: 'tp',
+      value: 180, threshold: 100, probability: 68,
+      valid_time: new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 6,
+      description: 'Typhoon approach. 150-200mm rainfall expected in 48 hours.',
+      crop_impact: 'Severe flood risk. Secure equipment. Prepare drainage.',
+    },
+    {
+      id: 'wet-cn-hubei',
+      lat: 30.5, lon: 114.5,
+      region: 'Hubei', country: 'China',
+      event_type: 'WET', severity: 'MODERATE', variable: 'tp',
+      value: 70, threshold: 50, probability: 62,
+      valid_time: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 5,
+      description: 'Monsoon rainfall affecting rice paddies.',
+      crop_impact: 'Monitor water levels in paddies. Adjust drainage.',
+    },
+    {
+      id: 'dry-za-westcape',
+      lat: -33.9, lon: 18.5,
+      region: 'Western Cape', country: 'South Africa',
+      event_type: 'DRY', severity: 'MODERATE', variable: 'tp',
+      value: 5, threshold: 25, probability: 70,
+      valid_time: new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 12,
+      description: 'Below-average rainfall expected for 2 weeks.',
+      crop_impact: 'Wheat may require supplemental irrigation.',
+    },
+    {
+      id: 'wet-in-punjab',
+      lat: 31.0, lon: 75.5,
+      region: 'Punjab', country: 'India',
+      event_type: 'WET', severity: 'HIGH', variable: 'tp',
+      value: 95, threshold: 60, probability: 74,
+      valid_time: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 4,
+      description: 'Heavy monsoon rainfall expected.',
+      crop_impact: 'Rice paddies: manage water levels. Wheat harvest: expedite.',
+    },
+    {
+      id: 'dry-ar-baires',
+      lat: -34.5, lon: -59.0,
+      region: 'Buenos Aires', country: 'Argentina',
+      event_type: 'DRY', severity: 'HIGH', variable: 'tp',
+      value: 8, threshold: 30, probability: 76,
+      valid_time: new Date(now.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString(),
+      lead_time_days: 9,
+      description: 'Dry period extending. Rain deficit accumulating.',
+      crop_impact: 'Soybean stress risk increasing. Consider irrigation.',
     },
   ];
+  
+  return hotspots;
 }
 
 function generateMockVerificationScores(days: number = 10): VerificationScore[] {
-  const era5Latest = getERA5LatestDate();
-  const latestDate = new Date(era5Latest);
+  const era5 = getERA5Availability();
+  const latestDate = new Date(era5.latest_date);
   const scores: VerificationScore[] = [];
   
   for (let i = 0; i < days; i++) {
     const date = new Date(latestDate);
     date.setDate(latestDate.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatDateISO(date);
     
-    const baseRMSE = 1.2 + Math.sin(i * 0.5) * 0.3;
-    const baseBias = 0.1 + Math.cos(i * 0.3) * 0.2;
+    // Realistic RMSE variation (better for short lead times)
+    const leadTimeFactor = 1 + (i * 0.05);
+    const baseRMSE = (1.1 + Math.random() * 0.3) * leadTimeFactor;
+    const baseBias = (Math.random() - 0.5) * 0.4;
     
     scores.push({
       date: dateStr,
       model: 'hybrid',
-      t2m_rmse: Number((baseRMSE + Math.random() * 0.2).toFixed(2)),
-      t2m_bias: Number((baseBias + (Math.random() - 0.5) * 0.3).toFixed(2)),
-      t2m_mae: Number((baseRMSE * 0.8 + Math.random() * 0.1).toFixed(2)),
-      tp_csi: Number((0.55 + Math.random() * 0.15).toFixed(2)),
-      tp_pod: Number((0.70 + Math.random() * 0.15).toFixed(2)),
-      tp_far: Number((0.25 + Math.random() * 0.10).toFixed(2)),
-      heat_event_csi: Number((0.58 + Math.random() * 0.12).toFixed(2)),
-      cold_event_csi: Number((0.52 + Math.random() * 0.15).toFixed(2)),
-      wet_event_csi: Number((0.48 + Math.random() * 0.12).toFixed(2)),
-      lead_time_hours: 24,
+      region: 'Europe',
+      t2m_rmse: Number(baseRMSE.toFixed(2)),
+      t2m_bias: Number(baseBias.toFixed(2)),
+      t2m_mae: Number((baseRMSE * 0.78).toFixed(2)),
+      t2m_correlation: Number((0.92 - i * 0.01 + Math.random() * 0.02).toFixed(3)),
+      tp_rmse: Number((2.5 + Math.random() * 1.0).toFixed(2)),
+      tp_csi: Number((0.52 + Math.random() * 0.15).toFixed(2)),
+      tp_pod: Number((0.68 + Math.random() * 0.15).toFixed(2)),
+      tp_far: Number((0.28 + Math.random() * 0.12).toFixed(2)),
+      heat_event_csi: Number((0.55 + Math.random() * 0.12).toFixed(2)),
+      heat_event_pod: Number((0.72 + Math.random() * 0.10).toFixed(2)),
+      heat_event_far: Number((0.22 + Math.random() * 0.08).toFixed(2)),
+      cold_event_csi: Number((0.50 + Math.random() * 0.12).toFixed(2)),
+      wet_event_csi: Number((0.45 + Math.random() * 0.12).toFixed(2)),
+      lead_time_hours: 24 * (i + 1),
     });
   }
   
   return scores;
-}
-
-function generateMockForecast(lat: number, lon: number, hours: number = 240): HybridForecastResponse {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  
-  const baseTemp = 20 - Math.abs(lat - 45) * 0.4;
-  const times: string[] = [];
-  const hybrid: number[] = [];
-  const ifs: number[] = [];
-  const aifs: number[] = [];
-  const uncertainty: number[] = [];
-  
-  for (let h = 0; h <= hours; h += 6) {
-    const t = new Date(now.getTime() + h * 60 * 60 * 1000);
-    times.push(t.toISOString());
-    
-    const dailyCycle = 8 * Math.sin((h % 24) * Math.PI / 12 - Math.PI / 2);
-    const trend = 3 * Math.sin(h * Math.PI / (7 * 24));
-    const noise = (Math.random() - 0.5) * 3;
-    
-    const ifsVal = baseTemp + dailyCycle + trend + noise;
-    const aifsVal = ifsVal + (Math.random() - 0.5) * 2;
-    const hybridVal = (ifsVal + aifsVal) / 2;
-    
-    ifs.push(Number(ifsVal.toFixed(1)));
-    aifs.push(Number(aifsVal.toFixed(1)));
-    hybrid.push(Number(hybridVal.toFixed(1)));
-    uncertainty.push(Number((Math.abs(ifsVal - aifsVal) / 2).toFixed(1)));
-  }
-  
-  return {
-    init_date: now.toISOString().split('T')[0].replace(/-/g, ''),
-    init_time: '00z',
-    location: { lat, lon },
-    variable: 't2m',
-    times,
-    hybrid_values: hybrid,
-    ifs_values: ifs,
-    aifs_values: aifs,
-    uncertainty,
-    unit: '°C',
-  };
 }
 
 function generateMockProfiles(): CropProfile[] {
@@ -344,15 +350,17 @@ function generateMockProfiles(): CropProfile[] {
       id: 'profile-1',
       user_id: 'user-1',
       polygon_id: 'poly-1',
-      name: 'Maize North Field 2024',
+      name: 'Maize - North Field 2024',
       crop_type: 'maize',
       sowing_date: '2024-04-15',
+      expected_harvest_date: '2024-10-01',
       gdd_base_temp: 10,
       gdd_targets: {
         emergence: 100,
         v6: 300,
         tasseling: 700,
         silking: 800,
+        grain_fill: 1000,
         maturity: 1400,
       },
       thresholds: {
@@ -360,36 +368,49 @@ function generateMockProfiles(): CropProfile[] {
         cold_stress: 10,
         wet_stress_3day: 50,
       },
-      current_gdd: 650,
+      current_gdd: 680,
       current_stage: 'V12 (Pre-tasseling)',
       is_active: true,
+      notes: 'Watch for European corn borer. Irrigation system operational.',
       created_at: '2024-04-01T00:00:00Z',
     },
     {
       id: 'profile-2',
       user_id: 'user-1',
-      name: 'Winter Wheat South Field',
+      name: 'Winter Wheat - South Field',
       crop_type: 'winter_wheat',
       sowing_date: '2024-10-15',
+      expected_harvest_date: '2025-07-15',
       gdd_base_temp: 0,
       gdd_targets: {
         emergence: 150,
         tillering: 400,
         stem_elongation: 800,
         heading: 1100,
+        flowering: 1250,
         maturity: 1800,
       },
       thresholds: {
         heat_stress: 32,
         cold_stress: -5,
-        frost_damage: -10,
+        frost_damage: -12,
         wet_stress_7day: 70,
       },
-      current_gdd: 420,
+      current_gdd: 450,
       current_stage: 'Tillering',
       is_active: true,
+      notes: 'Good stand establishment. Monitor for late frost risk.',
       created_at: '2024-10-01T00:00:00Z',
     },
+  ];
+}
+
+function generateMockRegionalSummaries(): RegionalSummary[] {
+  return [
+    { region: 'Central Europe', country: 'Multi', t2m_mean: 18.5, t2m_max: 28.2, t2m_min: 11.3, t2m_anomaly: 2.1, tp_total: 45, tp_anomaly: -15, risk_level: 'MODERATE', active_alerts: 3 },
+    { region: 'US Midwest', country: 'USA', t2m_mean: 24.2, t2m_max: 36.5, t2m_min: 18.0, t2m_anomaly: 4.5, tp_total: 22, tp_anomaly: -35, risk_level: 'HIGH', active_alerts: 5 },
+    { region: 'Indo-Gangetic Plain', country: 'India', t2m_mean: 32.1, t2m_max: 42.0, t2m_min: 26.5, t2m_anomaly: 1.8, tp_total: 85, tp_anomaly: 20, risk_level: 'MODERATE', active_alerts: 2 },
+    { region: 'North China Plain', country: 'China', t2m_mean: 26.5, t2m_max: 34.0, t2m_min: 20.5, t2m_anomaly: 1.2, tp_total: 55, tp_anomaly: -8, risk_level: 'LOW', active_alerts: 1 },
   ];
 }
 
@@ -403,8 +424,10 @@ export const api = {
         status: 'healthy',
         database: true,
         gcs: true,
+        ecmwf_connection: true,
         timestamp: new Date().toISOString(),
-        version: '5.0.0',
+        version: '5.1.0',
+        uptime_seconds: 86400 * 7,
       };
     }
     return fetchAPI<HealthStatus>('/api/health');
@@ -416,35 +439,41 @@ export const api = {
       const era5 = getERA5Availability();
       const now = new Date();
       
+      // Pipeline runs at 08:00 UTC and 20:00 UTC
       let nextFetch: Date;
-      if (now.getHours() < 8) {
-        nextFetch = new Date(now);
-        nextFetch.setHours(8, 0, 0, 0);
-      } else if (now.getHours() < 20) {
-        nextFetch = new Date(now);
-        nextFetch.setHours(20, 0, 0, 0);
+      const hour = now.getUTCHours();
+      if (hour < 8) {
+        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
+      } else if (hour < 20) {
+        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 20, 0, 0));
       } else {
-        nextFetch = new Date(now);
-        nextFetch.setDate(nextFetch.getDate() + 1);
-        nextFetch.setHours(8, 0, 0, 0);
+        nextFetch = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 8, 0, 0));
       }
       
+      const lastFetch = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+      
       return {
-        last_ifs_fetch: new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString(),
-        last_aifs_fetch: new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString(),
+        last_ifs_fetch: lastFetch.toISOString(),
+        last_aifs_fetch: lastFetch.toISOString(),
         next_scheduled_fetch: nextFetch.toISOString(),
         ecmwf_delay_hours: 8,
         era5_delay_days: ERA5_DELAY_DAYS,
         era5_latest_date: era5.latest_date,
         status: 'healthy',
         steps: [
-          { name: 'Fetch IFS from ECMWF', status: 'completed' },
-          { name: 'Fetch AIFS from ECMWF', status: 'completed' },
-          { name: 'Store in GCS', status: 'completed' },
-          { name: 'Process GRIB files', status: 'completed' },
-          { name: 'Generate risk alerts', status: 'completed' },
-          { name: 'Update verification (ERA5)', status: 'completed' },
+          { name: 'Fetch IFS HRES from ECMWF Open Data', status: 'completed', duration_seconds: 180 },
+          { name: 'Fetch AIFS Ensemble from ECMWF Open Data', status: 'completed', duration_seconds: 240 },
+          { name: 'Store GRIB files in GCS', status: 'completed', duration_seconds: 120 },
+          { name: 'Process and convert to Zarr', status: 'completed', duration_seconds: 300 },
+          { name: 'Calculate hybrid blend weights', status: 'completed', duration_seconds: 45 },
+          { name: 'Generate risk alerts', status: 'completed', duration_seconds: 90 },
+          { name: 'Update verification metrics (ERA5)', status: 'completed', duration_seconds: 150 },
         ],
+        data_freshness: {
+          ifs_age_hours: 4,
+          aifs_age_hours: 4,
+          era5_age_days: ERA5_DELAY_DAYS,
+        },
       };
     }
     return fetchAPI<PipelineStatus>('/api/pipeline/status');
@@ -459,7 +488,7 @@ export const api = {
       for (let i = 0; i < 7; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0].replace(/-/g, '');
+        const dateStr = formatDateISO(d).replace(/-/g, '');
         
         forecasts.ifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 240 });
         forecasts.aifs.push({ date: dateStr, init_times: ['00z', '12z'], max_lead_time: 360 });
@@ -478,7 +507,49 @@ export const api = {
     variable: string = 't2m'
   ): Promise<HybridForecastResponse> {
     if (ENABLE_MOCK) {
-      return generateMockForecast(lat, lon);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      const baseTemp = 20 - Math.abs(lat - 45) * 0.4;
+      const times: string[] = [];
+      const hybrid: number[] = [];
+      const ifs: number[] = [];
+      const aifs: number[] = [];
+      const uncertainty: number[] = [];
+      
+      const hours = variable === 't2m' ? 240 : 360;
+      
+      for (let h = 0; h <= hours; h += 6) {
+        const t = new Date(now.getTime() + h * 60 * 60 * 1000);
+        times.push(t.toISOString());
+        
+        const dailyCycle = 8 * Math.sin((h % 24) * Math.PI / 12 - Math.PI / 2);
+        const trend = 3 * Math.sin(h * Math.PI / (7 * 24));
+        const noise = (Math.random() - 0.5) * 2;
+        
+        const ifsVal = baseTemp + dailyCycle + trend + noise;
+        const aifsVal = ifsVal + (Math.random() - 0.5) * 1.5;
+        const hybridVal = ifsVal * 0.6 + aifsVal * 0.4;
+        const unc = Math.abs(ifsVal - aifsVal) / 2 + 0.5 + (h / 24) * 0.1;
+        
+        ifs.push(Number(ifsVal.toFixed(1)));
+        aifs.push(Number(aifsVal.toFixed(1)));
+        hybrid.push(Number(hybridVal.toFixed(1)));
+        uncertainty.push(Number(unc.toFixed(1)));
+      }
+      
+      return {
+        init_date: initDate,
+        init_time: initTime,
+        location: { lat, lon },
+        variable,
+        times,
+        hybrid_values: hybrid,
+        ifs_values: ifs,
+        aifs_values: aifs,
+        uncertainty,
+        unit: variable === 't2m' ? '°C' : 'mm',
+      };
     }
     return fetchAPI<HybridForecastResponse>(
       `/api/forecast/hybrid/${initDate}/${initTime}/location?lat=${lat}&lon=${lon}&variable=${variable}`
@@ -493,10 +564,18 @@ export const api = {
     return fetchAPI<RiskHotspot[]>('/api/risks/global');
   },
 
+  // Regional Summaries
+  async getRegionalSummaries(): Promise<RegionalSummary[]> {
+    if (ENABLE_MOCK) {
+      return generateMockRegionalSummaries();
+    }
+    return fetchAPI<RegionalSummary[]>('/api/risks/regional');
+  },
+
   // User Alerts
   async getAlerts(status: string = 'active'): Promise<RiskAlert[]> {
     if (ENABLE_MOCK) {
-      const hotspots = generateMockRiskHotspots().slice(0, 3);
+      const hotspots = generateMockRiskHotspots().slice(0, 4);
       return hotspots.map(h => ({
         id: h.id,
         event_type: h.event_type,
@@ -506,7 +585,7 @@ export const api = {
         location_lon: h.lon,
         forecast_date: h.valid_time.split('T')[0],
         confidence: h.probability,
-        action_recommended: h.description,
+        action_recommended: h.crop_impact || h.description,
         status: 'active' as const,
         created_at: new Date().toISOString(),
       }));
@@ -519,7 +598,7 @@ export const api = {
     return fetchAPI(`/api/alerts/${alertId}/dismiss`, { method: 'POST' });
   },
 
-  // Verification (with ERA5 delay handling)
+  // Verification (with ERA5 delay handling - last 10 available days)
   async getVerificationScores(days: number = 10): Promise<VerificationScore[]> {
     if (ENABLE_MOCK) {
       return generateMockVerificationScores(days);
@@ -537,11 +616,30 @@ export const api = {
 
   async createProfile(profile: Partial<CropProfile>): Promise<CropProfile> {
     if (ENABLE_MOCK) {
-      return { ...profile, id: `profile-${Date.now()}`, user_id: 'user-1', created_at: new Date().toISOString() } as CropProfile;
+      return { 
+        ...profile, 
+        id: `profile-${Date.now()}`, 
+        user_id: 'user-1', 
+        current_gdd: 0,
+        is_active: true,
+        created_at: new Date().toISOString() 
+      } as CropProfile;
     }
     return fetchAPI<CropProfile>('/api/profiles', {
       method: 'POST',
       body: JSON.stringify(profile),
+    });
+  },
+
+  async updateProfile(profileId: string, updates: Partial<CropProfile>): Promise<CropProfile> {
+    if (ENABLE_MOCK) {
+      const profiles = generateMockProfiles();
+      const profile = profiles.find(p => p.id === profileId);
+      return { ...profile, ...updates } as CropProfile;
+    }
+    return fetchAPI<CropProfile>(`/api/profiles/${profileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
     });
   },
 
@@ -565,6 +663,21 @@ export const api = {
           centroid: { lat: 48.15, lon: 11.55 },
           area_hectares: 125.5,
           crop_type: 'maize',
+          tags: ['irrigated', 'primary'],
+          created_at: '2024-04-01T00:00:00Z',
+        },
+        {
+          id: 'poly-2',
+          user_id: 'user-1',
+          name: 'South Field - Bavaria',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[11.5, 48.0], [11.65, 48.0], [11.65, 48.08], [11.5, 48.08], [11.5, 48.0]]],
+          },
+          centroid: { lat: 48.04, lon: 11.575 },
+          area_hectares: 180.2,
+          crop_type: 'winter_wheat',
+          tags: ['rainfed'],
           created_at: '2024-04-01T00:00:00Z',
         },
       ];
@@ -572,10 +685,26 @@ export const api = {
     return fetchAPI<UserPolygon[]>('/api/polygons');
   },
 
+  async createPolygon(polygon: Partial<UserPolygon>): Promise<UserPolygon> {
+    if (ENABLE_MOCK) {
+      return {
+        ...polygon,
+        id: `poly-${Date.now()}`,
+        user_id: 'user-1',
+        created_at: new Date().toISOString(),
+      } as UserPolygon;
+    }
+    return fetchAPI<UserPolygon>('/api/polygons', {
+      method: 'POST',
+      body: JSON.stringify(polygon),
+    });
+  },
+
   // Auth
   async login(email: string, password: string): Promise<{ access_token: string }> {
     if (ENABLE_MOCK) {
       localStorage.setItem('aiwfa_token', 'mock-token-12345');
+      localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: email.split('@')[0] }));
       return { access_token: 'mock-token-12345' };
     }
     
@@ -595,13 +724,19 @@ export const api = {
     return data;
   },
 
-  async logout(): Promise<void> {
+  logout(): void {
     localStorage.removeItem('aiwfa_token');
+    localStorage.removeItem('aiwfa_user');
+  },
+
+  isAuthenticated(): boolean {
+    return !!localStorage.getItem('aiwfa_token');
   },
 
   async register(email: string, password: string, name?: string): Promise<{ access_token: string }> {
     if (ENABLE_MOCK) {
       localStorage.setItem('aiwfa_token', 'mock-token-12345');
+      localStorage.setItem('aiwfa_user', JSON.stringify({ email, name: name || email.split('@')[0] }));
       return { access_token: 'mock-token-12345' };
     }
     return fetchAPI('/api/auth/register', {

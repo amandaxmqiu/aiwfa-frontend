@@ -1,8 +1,10 @@
 // ============================================
-// AIWFA Type Definitions
+// AIWFA Type Definitions v5.1
+// AI Weather Forecasts for Agriculture
 // ============================================
 
-// Location & Geography
+// ============ Location & Geography ============
+
 export interface Location {
   lat: number;
   lon: number;
@@ -20,7 +22,8 @@ export interface GeoJSONPolygon {
   coordinates: number[][][];
 }
 
-// User & Auth
+// ============ User & Auth ============
+
 export interface User {
   id: string;
   email: string;
@@ -35,7 +38,8 @@ export interface AuthState {
   isAuthenticated: boolean;
 }
 
-// Forecast Data
+// ============ Forecast Data ============
+
 export interface ForecastPoint {
   time: string;
   value: number;
@@ -76,10 +80,12 @@ export interface ForecastAvailability {
   max_lead_time: number;
 }
 
-// Risk Alerts
+// ============ Risk & Alerts ============
+
 export type RiskEventType = 'HEAT' | 'COLD' | 'WET' | 'DRY' | 'FROST' | 'STORM';
 export type RiskSeverity = 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME';
 export type AlertStatus = 'active' | 'dismissed' | 'expired' | 'triggered';
+export type WeatherVariable = 't2m' | 'tp';
 
 export interface RiskAlert {
   id: string;
@@ -110,25 +116,34 @@ export interface RiskHotspot {
   country: string;
   event_type: RiskEventType;
   severity: RiskSeverity;
-  variable: 't2m' | 'tp';
+  variable: WeatherVariable;
   value: number;
   threshold: number;
   probability: number;
   valid_time: string;
+  lead_time_days: number;
   description: string;
+  crop_impact?: string;
 }
 
-// Verification & ERA5
+// ============ Verification & ERA5 ============
+
 export interface VerificationScore {
   date: string;
   model: string;
+  region?: string;
   t2m_rmse?: number;
   t2m_bias?: number;
   t2m_mae?: number;
+  t2m_correlation?: number;
+  tp_rmse?: number;
+  tp_bias?: number;
   tp_csi?: number;
   tp_pod?: number;
   tp_far?: number;
   heat_event_csi?: number;
+  heat_event_pod?: number;
+  heat_event_far?: number;
   cold_event_csi?: number;
   wet_event_csi?: number;
   lead_time_hours: number;
@@ -139,10 +154,12 @@ export interface ERA5Availability {
   delay_days: number;
   available_from: string;
   available_to: string;
+  is_available: boolean;
 }
 
-// Crop Profiles
-export type CropType = 'maize' | 'winter_wheat' | 'spring_barley' | 'soybean' | 'rice';
+// ============ Crop Profiles ============
+
+export type CropType = 'maize' | 'winter_wheat' | 'spring_barley' | 'soybean' | 'rice' | 'winter_cereals';
 
 export interface GDDTargets {
   emergence?: number;
@@ -154,6 +171,7 @@ export interface GDDTargets {
   tillering?: number;
   stem_elongation?: number;
   heading?: number;
+  flowering?: number;
   [key: string]: number | undefined;
 }
 
@@ -184,7 +202,8 @@ export interface CropProfile {
   created_at: string;
 }
 
-// User Polygons (Areas of Concern)
+// ============ User Polygons (Areas of Concern) ============
+
 export interface UserPolygon {
   id: string;
   user_id: string;
@@ -197,13 +216,15 @@ export interface UserPolygon {
   created_at: string;
 }
 
-// Pipeline Status
+// ============ Pipeline Status ============
+
 export interface PipelineStep {
   name: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   start_time?: string;
   end_time?: string;
   error?: string;
+  duration_seconds?: number;
 }
 
 export interface PipelineStatus {
@@ -215,18 +236,27 @@ export interface PipelineStatus {
   era5_latest_date: string;
   status: 'healthy' | 'degraded' | 'error';
   steps: PipelineStep[];
+  data_freshness: {
+    ifs_age_hours: number;
+    aifs_age_hours: number;
+    era5_age_days: number;
+  };
 }
 
-// API Health
+// ============ API Health ============
+
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'error';
   database: boolean;
   gcs: boolean;
+  ecmwf_connection: boolean;
   timestamp: string;
   version?: string;
+  uptime_seconds?: number;
 }
 
-// Chart Data
+// ============ Chart Data ============
+
 export interface ChartDataPoint {
   time: string;
   displayTime: string;
@@ -236,4 +266,54 @@ export interface ChartDataPoint {
   upper?: number;
   lower?: number;
   observed?: number;
+  anomaly?: number;
+}
+
+export interface TimeSeriesData {
+  times: string[];
+  values: number[];
+  uncertainty?: number[];
+  unit: string;
+}
+
+// ============ Map & Visualization ============
+
+export interface MapLayer {
+  id: string;
+  name: string;
+  type: 'risk' | 'temperature' | 'precipitation' | 'anomaly';
+  visible: boolean;
+  opacity: number;
+}
+
+export interface MapViewport {
+  center: Location;
+  zoom: number;
+  bounds?: BoundingBox;
+}
+
+// ============ Global Weather Data ============
+
+export interface GlobalWeatherField {
+  variable: WeatherVariable;
+  init_time: string;
+  valid_time: string;
+  data: number[][];
+  lat_range: [number, number];
+  lon_range: [number, number];
+  resolution: number;
+  unit: string;
+}
+
+export interface RegionalSummary {
+  region: string;
+  country: string;
+  t2m_mean: number;
+  t2m_max: number;
+  t2m_min: number;
+  t2m_anomaly: number;
+  tp_total: number;
+  tp_anomaly: number;
+  risk_level: RiskSeverity;
+  active_alerts: number;
 }
